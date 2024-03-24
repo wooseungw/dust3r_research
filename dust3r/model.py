@@ -12,7 +12,7 @@ from .heads import head_factory
 from dust3r.patch_embed import get_patch_embed
 
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.croco import CroCoNet  # noqa
+from croco.models.croco import CroCoNet  # noqa
 inf = float('inf')
 
 
@@ -106,7 +106,7 @@ class AsymmetricCroCo3DStereo (CroCoNet):
         return out, out2, pos, pos2
 
     def _encode_symmetrized(self, view1, view2):
-        img1 = view1['img']
+        img1 = view1['img'] 
         img2 = view2['img']
         B = img1.shape[0]
         # Recover true_shape when available, otherwise assume that the img shape is the true one
