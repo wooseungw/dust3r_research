@@ -21,7 +21,6 @@ class AsymmetricCroCo3DStereo (CroCoNet):
     The goal is to output 3d points directly, both images in view1's frame
     (hence the asymmetry).   
     """
-
     def __init__(self,
                  output_mode='pts3d',
                  head_type='linear',
