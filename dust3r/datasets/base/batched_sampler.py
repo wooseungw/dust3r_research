@@ -9,13 +9,12 @@ import torch
 
 
 class BatchedRandomSampler:
-    """ Random sampling under a constraint: each sample in the batch has the same feature, 
-    which is chosen randomly from a known pool of 'features' for each batch.
+    """ 제약 조건 하에서의 랜덤 샘플링: 각 배치의 샘플은 동일한 특징을 가지며, 각 배치마다 알려진 '특징' 풀에서 무작위로 선택됩니다.
 
-    For instance, the 'feature' could be the image aspect-ratio.
+    예를 들어, '특징'은 이미지의 가로 세로 비율일 수 있습니다.
 
-    The index returned is a tuple (sample_idx, feat_idx).
-    This sampler ensures that each series of `batch_size` indices has the same `feat_idx`.
+    반환되는 인덱스는 (샘플 인덱스, 특징 인덱스)의 튜플입니다.
+    이 샘플러는 각 `batch_size` 인덱스 시퀀스가 동일한 `feat_idx`를 가지도록 보장합니다.
     """
 
     def __init__(self, dataset, batch_size, pool_size, world_size=1, rank=0, drop_last=True):

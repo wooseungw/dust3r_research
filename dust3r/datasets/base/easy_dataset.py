@@ -9,14 +9,14 @@ from dust3r.datasets.base.batched_sampler import BatchedRandomSampler
 
 
 class EasyDataset:
-    """ a dataset that you can easily resize and combine.
-    Examples:
-    ---------
-        2 * dataset ==> duplicate each element 2x
+    """ 쉽게 크기를 조정하고 결합할 수 있는 데이터셋입니다.
+    예시:
+    ------
+        2 * dataset ==> 각 요소를 2배로 복제합니다.
 
-        10 @ dataset ==> set the size to 10 (random sampling, duplicates if necessary)
+        10 @ dataset ==> 크기를 10으로 설정합니다 (랜덤 샘플링, 필요한 경우 중복됩니다).
 
-        dataset1 + dataset2 ==> concatenate datasets
+        dataset1 + dataset2 ==> 데이터셋을 연결합니다.
     """
 
     def __add__(self, other):
@@ -29,17 +29,16 @@ class EasyDataset:
         return ResizedDataset(factor, self)
 
     def set_epoch(self, epoch):
-        pass  # nothing to do by default
+        pass  # 기본적으로 아무 작업도 수행하지 않습니다.
 
     def make_sampler(self, batch_size, shuffle=True, world_size=1, rank=0, drop_last=True):
         if not (shuffle):
-            raise NotImplementedError()  # cannot deal yet
+            raise NotImplementedError()  # 아직 처리할 수 없습니다.
         num_of_aspect_ratios = len(self._resolutions)
         return BatchedRandomSampler(self, batch_size, num_of_aspect_ratios, world_size=world_size, rank=rank, drop_last=drop_last)
 
-
 class MulDataset (EasyDataset):
-    """ Artifically augmenting the size of a dataset.
+    """ 데이터셋의 크기를 인위적으로 증가시키는 클래스입니다.
     """
     multiplicator: int
 
@@ -65,7 +64,7 @@ class MulDataset (EasyDataset):
     def _resolutions(self):
         return self.dataset._resolutions
 
-
+#리사이즈된 데이터셋
 class ResizedDataset (EasyDataset):
     """ Artifically changing the size of a dataset.
     """
@@ -111,7 +110,7 @@ class ResizedDataset (EasyDataset):
     def _resolutions(self):
         return self.dataset._resolutions
 
-
+#데이터셋을 연결하는 클래스
 class CatDataset (EasyDataset):
     """ Concatenation of several datasets 
     """

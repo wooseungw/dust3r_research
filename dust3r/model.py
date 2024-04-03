@@ -17,9 +17,9 @@ inf = float('inf')
 
 
 class AsymmetricCroCo3DStereo (CroCoNet):
-    """ Two siamese encoders, followed by two decoders.
-    The goal is to output 3d points directly, both images in view1's frame
-    (hence the asymmetry).   
+    """ 두 개의 샴(쌍둥이) 인코더와 두 개의 디코더로 구성됩니다.
+    목표는 3D 포인트를 직접 출력하는 것이며, 두 이미지 모두 view1의 프레임에서 표시됩니다.
+    (따라서 비대칭성이 있습니다).   
     """
     def __init__(self,
                  output_mode='pts3d',
@@ -78,15 +78,16 @@ class AsymmetricCroCo3DStereo (CroCoNet):
         # magic wrapper
         self.head1 = transpose_to_landscape(self.downstream_head1, activate=landscape_only)
         self.head2 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
-
+    
+    #이미지 인코딩 부분
     def _encode_image(self, image, true_shape):
-        # embed the image into patches  (x has size B x Npatches x C)
+        # 이미지를 패치로 임베딩합니다 (x의 크기는 B x Npatches x C입니다).
         x, pos = self.patch_embed(image, true_shape=true_shape)
 
-        # add positional embedding without cls token
+        # cls 토큰 없이 위치 임베딩을 추가합니다.
         assert self.enc_pos_embed is None
 
-        # now apply the transformer encoder and normalization
+        # 이제 transformer 인코더와 정규화를 적용합니다.
         for blk in self.enc_blocks:
             x = blk(x, pos)
 

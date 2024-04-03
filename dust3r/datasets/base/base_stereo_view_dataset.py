@@ -15,12 +15,12 @@ import dust3r.datasets.utils.cropping as cropping
 
 
 class BaseStereoViewDataset (EasyDataset):
-    """ Define all basic options.
+    """ 기본 옵션을 모두 정의합니다.
 
-    Usage:
+    사용법:
         class MyDataset (BaseStereoViewDataset):
             def _get_views(self, idx, rng):
-                # overload here
+                # 여기에 오버로드합니다.
                 views = []
                 views.append(dict(img=, ...))
                 return views

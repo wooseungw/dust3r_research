@@ -18,48 +18,49 @@ from models.dpt_block import DPTOutputAdapter  # noqa
 
 
 class DPTOutputAdapter_fix(DPTOutputAdapter):
+
     """
-    Adapt croco's DPTOutputAdapter implementation for dust3r:
-    remove duplicated weigths, and fix forward for dust3r
+    dust3r를 위해 croco의 DPTOutputAdapter 구현을 수정:
+    중복된 가중치를 제거하고 dust3r에 맞게 forward 함수를 수정합니다.
     """
 
     def init(self, dim_tokens_enc=768):
         super().init(dim_tokens_enc)
-        # these are duplicated weights
+        # 중복된 가중치들을 삭제합니다.
         del self.act_1_postprocess
         del self.act_2_postprocess
         del self.act_3_postprocess
         del self.act_4_postprocess
 
     def forward(self, encoder_tokens: List[torch.Tensor], image_size=None):
-        assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
+        assert self.dim_tokens_enc is not None, 'init(dim_tokens_enc) 함수를 먼저 호출해야 합니다.'
         # H, W = input_info['image_size']
         image_size = self.image_size if image_size is None else image_size
         H, W = image_size
-        # Number of patches in height and width
+        # 높이와 너비에 대한 패치 수
         N_H = H // (self.stride_level * self.P_H)
         N_W = W // (self.stride_level * self.P_W)
 
-        # Hook decoder onto 4 layers from specified ViT layers
+        # 지정된 ViT 레이어에서 4개의 레이어에 디코더를 연결합니다.
         layers = [encoder_tokens[hook] for hook in self.hooks]
 
-        # Extract only task-relevant tokens and ignore global tokens.
+        # 전역 토큰을 무시하고 작업에 필요한 토큰만 추출합니다.
         layers = [self.adapt_tokens(l) for l in layers]
 
-        # Reshape tokens to spatial representation
+        # 토큰을 공간적인 표현으로 변환합니다.
         layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers]
 
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
-        # Project layers to chosen feature dim
+        # 선택한 특징 차원으로 레이어를 투영합니다.
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
 
-        # Fuse layers using refinement stages
+        # 개선 단계를 사용하여 레이어를 퓨즈합니다.
         path_4 = self.scratch.refinenet4(layers[3])[:, :, :layers[2].shape[2], :layers[2].shape[3]]
         path_3 = self.scratch.refinenet3(path_4, layers[2])
         path_2 = self.scratch.refinenet2(path_3, layers[1])
         path_1 = self.scratch.refinenet1(path_2, layers[0])
 
-        # Output head
+        # 출력 헤드
         out = self.head(path_1)
 
         return out
@@ -95,8 +96,16 @@ class PixelwiseTaskWithDPT(nn.Module):
 
 def create_dpt_head(net, has_conf=False):
     """
-    return PixelwiseTaskWithDPT for given net params
+    주어진 net 매개변수에 대한 PixelwiseTaskWithDPT를 반환합니다.
+
+    Parameters:
+        net (object): 네트워크 객체입니다.
+        has_conf (bool, optional): Confidence 값을 가지는지 여부를 나타내는 불리언 값입니다. 기본값은 False입니다.
+
+    Returns:
+        object: PixelwiseTaskWithDPT 객체를 반환합니다.
     """
+    # assert 문은 주어진 조건이 참이 아닐 경우 프로그램을 중단시키는 역할을 합니다.
     assert net.dec_depth > 9
     l2 = net.dec_depth
     feature_dim = 256
@@ -113,3 +122,15 @@ def create_dpt_head(net, has_conf=False):
                                 depth_mode=net.depth_mode,
                                 conf_mode=net.conf_mode,
                                 head_type='regression')
+
+if __name__ == '__main__':
+    # dpthead의 매개변수 수 계산
+    dpthead = create_dpt_head(net)
+    num_params = sum(p.numel() for p in dpthead.parameters())
+    print(f"dpthead의 매개변수 수: {num_params}")
+
+    # 추론 시간을 위한 FLOPS 계산
+    input_size = (1, 3, 256, 256)  # 예시 입력 크기
+    flops = torch.cuda.FloatTensor(input_size).to(dpthead.device)
+    flops = dpthead.forward_flops(flops)
+    print(f"추론 시간을 위한 FLOPS: {flops}")

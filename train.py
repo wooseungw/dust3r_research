@@ -37,55 +37,56 @@ import croco.utils.misc as misc  # noqa
 from croco.utils.misc import NativeScalerWithGradNormCount as NativeScaler  # noqa
 
 
+
 def get_args_parser():
     parser = argparse.ArgumentParser('DUST3R training', add_help=False)
-    # model and criterion
+    # 모델과 손실 함수 설정
     parser.add_argument('--model', default="AsymmetricCroCo3DStereo(patch_embed_cls='ManyAR_PatchEmbed')",
-                        type=str, help="string containing the model to build")
-    parser.add_argument('--pretrained', default=None, help='path of a starting checkpoint')
+                        type=str, help="빌드할 모델을 포함하는 문자열")
+    parser.add_argument('--pretrained', default=None, help='시작 체크포인트의 경로')
     parser.add_argument('--train_criterion', default="ConfLoss(Regr3D(L21, norm_mode='avg_dis'), alpha=0.2)",
-                        type=str, help="train criterion")
-    parser.add_argument('--test_criterion', default=None, type=str, help="test criterion")
+                        type=str, help="훈련 손실 함수")
+    parser.add_argument('--test_criterion', default=None, type=str, help="테스트 손실 함수")
 
-    # dataset
-    parser.add_argument('--train_dataset', required=True, type=str, help="training set")
-    parser.add_argument('--test_dataset', default='[None]', type=str, help="testing set")
+    # 데이터셋 설정
+    parser.add_argument('--train_dataset', required=True, type=str, help="훈련 데이터셋")
+    parser.add_argument('--test_dataset', default='[None]', type=str, help="테스트 데이터셋")
 
-    # training
-    parser.add_argument('--seed', default=0, type=int, help="Random seed")
+    # 훈련 설정
+    parser.add_argument('--seed', default=0, type=int, help="랜덤 시드")
     parser.add_argument('--batch_size', default=64, type=int,
-                        help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus")
+                        help="각 GPU당 배치 크기 (실제 배치 크기는 batch_size * accum_iter * # gpus)")
     parser.add_argument('--accum_iter', default=1, type=int,
-                        help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)")
-    parser.add_argument('--epochs', default=800, type=int, help="Maximum number of epochs for the scheduler")
+                        help="그래디언트 반복 횟수 (메모리 제약 조건에서 효과적인 배치 크기 증가)")
+    parser.add_argument('--epochs', default=800, type=int, help="스케줄러의 최대 에포크 수")
 
-    parser.add_argument('--weight_decay', type=float, default=0.05, help="weight decay (default: 0.05)")
-    parser.add_argument('--lr', type=float, default=None, metavar='LR', help='learning rate (absolute lr)')
+    parser.add_argument('--weight_decay', type=float, default=0.05, help="가중치 감쇠 (기본값: 0.05)")
+    parser.add_argument('--lr', type=float, default=None, metavar='LR', help='학습률 (절대 학습률)')
     parser.add_argument('--blr', type=float, default=1.5e-4, metavar='LR',
-                        help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+                        help='기본 학습률: absolute_lr = base_lr * total_batch_size / 256')
     parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
-                        help='lower lr bound for cyclic schedulers that hit 0')
-    parser.add_argument('--warmup_epochs', type=int, default=40, metavar='N', help='epochs to warmup LR')
+                        help='0에 도달하는 순환 스케줄러의 하한 학습률')
+    parser.add_argument('--warmup_epochs', type=int, default=40, metavar='N', help='학습률을 증가시키기 위한 에포크 수')
 
     parser.add_argument('--amp', type=int, default=0,
-                        choices=[0, 1], help="Use Automatic Mixed Precision for pretraining")
+                        choices=[0, 1], help="사전 훈련에 자동 혼합 정밀도 사용")
 
-    # others
+    # 기타 설정
     parser.add_argument('--num_workers', default=8, type=int)
-    parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')
+    parser.add_argument('--world_size', default=1, type=int, help='분산 프로세스 수')
     parser.add_argument('--local_rank', default=-1, type=int)
-    parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+    parser.add_argument('--dist_url', default='env://', help='분산 훈련 설정에 사용되는 URL')
 
-    parser.add_argument('--eval_freq', type=int, default=1, help='Test loss evaluation frequency')
+    parser.add_argument('--eval_freq', type=int, default=1, help='테스트 손실 평가 빈도')
     parser.add_argument('--save_freq', default=1, type=int,
-                        help='frequence (number of epochs) to save checkpoint in checkpoint-last.pth')
+                        help='체크포인트를 checkpoint-last.pth에 저장하는 빈도 (에포크 수)')
     parser.add_argument('--keep_freq', default=20, type=int,
-                        help='frequence (number of epochs) to save checkpoint in checkpoint-%d.pth')
+                        help='체크포인트를 checkpoint-%d.pth에 저장하는 빈도 (에포크 수)')
     parser.add_argument('--print_freq', default=20, type=int,
-                        help='frequence (number of iterations) to print infos while training')
+                        help='훈련 중 정보를 출력하는 빈도 (반복 횟수)')
 
-    # output dir
-    parser.add_argument('--output_dir', default='./output/', type=str, help="path where to save the output")
+    # 출력 디렉토리
+    parser.add_argument('--output_dir', default='./output/', type=str, help="출력을 저장할 경로")
     return parser
 
 
