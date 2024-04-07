@@ -67,7 +67,8 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
 
 
 class PixelwiseTaskWithDPT(nn.Module):
-    """ DPT module for dust3r, can return 3D points + confidence for all pixels"""
+    """ dust3r를 위한 DPT 모듈, 모든 픽셀에 대한 3D 포인트와 신뢰도를 반환할 수 있습니다. """
+
 
     def __init__(self, *, n_cls_token=0, hooks_idx=None, dim_tokens=None,
                  output_width_ratio=1, num_channels=1, postprocess=None, depth_mode=None, conf_mode=None, **kwargs):

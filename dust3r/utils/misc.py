@@ -52,9 +52,9 @@ def interleave(tensor1, tensor2):
 
 
 def transpose_to_landscape(head, activate=True):
-    """ Predict in the correct aspect-ratio,
-        then transpose the result in landscape 
-        and stack everything back together.
+    """ 올바른 종횡비로 예측한 다음,
+        결과를 가로 방향으로 전치하고
+        모든 것을 다시 쌓습니다.
     """
     def wrapper_no(decout, true_shape):
         B = len(true_shape)
