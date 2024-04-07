@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from dust3r.heads.postprocess import postprocess
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.dpt_block import DPTOutputAdapter  # noqa
+from croco.models.dpt_block import DPTOutputAdapter  # noqa
 
 
 class DPTOutputAdapter_fix(DPTOutputAdapter):
@@ -68,7 +68,6 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
 
 class PixelwiseTaskWithDPT(nn.Module):
     """ dust3r를 위한 DPT 모듈, 모든 픽셀에 대한 3D 포인트와 신뢰도를 반환할 수 있습니다. """
-
 
     def __init__(self, *, n_cls_token=0, hooks_idx=None, dim_tokens=None,
                  output_width_ratio=1, num_channels=1, postprocess=None, depth_mode=None, conf_mode=None, **kwargs):

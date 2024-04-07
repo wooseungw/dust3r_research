@@ -35,7 +35,8 @@ from dust3r.inference import loss_of_one_batch  # noqa
 import dust3r.utils.path_to_croco  # noqa: F401
 import croco.utils.misc as misc  # noqa
 from croco.utils.misc import NativeScalerWithGradNormCount as NativeScaler  # noqa
-
+###새로추가###
+from newdust.model import newnet
 
 
 def get_args_parser():

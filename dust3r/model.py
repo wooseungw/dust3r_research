@@ -9,7 +9,7 @@ import torch
 
 from .utils.misc import fill_default_args, freeze_all_params, is_symmetrized, interleave, transpose_to_landscape
 from .heads import head_factory
-from dust3r.patch_embed import get_patch_embed
+from .patch_embed import get_patch_embed
 
 import dust3r.utils.path_to_croco  # noqa: F401
 from croco.models.croco import CroCoNet  # noqa
@@ -164,3 +164,4 @@ class AsymmetricCroCo3DStereo (CroCoNet):
 
         res2['pts3d_in_other_view'] = res2.pop('pts3d')  # predict view2's pts3d in view1's frame
         return res1, res2
+
