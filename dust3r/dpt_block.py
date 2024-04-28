@@ -141,6 +141,12 @@ class ResidualConvUnit_custom(nn.Module):
 
         return self.skip_add.add(out, x)
 
+class CrossAttentionBlock_custom(nn.Module):
+    def __init__(self, *args, **kwargs) -> None:
+        
+    def forward(self, *xs):
+        return 
+
 class FeatureFusionBlock_custom(nn.Module):
     """Feature fusion block."""
 
@@ -194,6 +200,7 @@ class FeatureFusionBlock_custom(nn.Module):
         output = xs[0]
 
         if len(xs) == 2:
+            print(xs.shape)
             res = self.resConfUnit1(xs[1])
             if self.width_ratio != 1:
                 res = F.interpolate(res, size=(output.shape[2], output.shape[3]), mode='bilinear')
@@ -204,6 +211,7 @@ class FeatureFusionBlock_custom(nn.Module):
         output = self.resConfUnit2(output)
 
         if self.width_ratio != 1:
+            print(xs.shape)
             # and output.shape[3] < self.width_ratio * output.shape[2]
             #size=(image.shape[])
             if (output.shape[3] / output.shape[2]) < (2 / 3) * self.width_ratio:
@@ -436,12 +444,17 @@ class DPTOutputAdapter(nn.Module):
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
-
+        for i in layers:
+            print(i.shape)
         # Fuse layers using refinement stages
         path_4 = self.scratch.refinenet4(layers[3])
+        print("path4",path_4.shape)
         path_3 = self.scratch.refinenet3(path_4, layers[2])
+        print("path3",path_3.shape)
         path_2 = self.scratch.refinenet2(path_3, layers[1])
+        print("path2",path_2.shape)
         path_1 = self.scratch.refinenet1(path_2, layers[0])
+        print("path1",path_1.shape)
 
         # Output head
         out = self.head(path_1)
