@@ -58,6 +58,7 @@ def loss_of_one_batch(batch, model, criterion, device, symmetrize_batch=False, u
 
     with torch.cuda.amp.autocast(enabled=bool(use_amp)):
         pred1, pred2 = model(view1, view2)
+        
 
         # loss is supposed to be symmetric
         with torch.cuda.amp.autocast(enabled=False):

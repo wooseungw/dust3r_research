@@ -130,7 +130,8 @@ class AsymmetricCroCo3DStereo (CroCoNet):
         # project to decoder dim
         f1 = self.decoder_embed(f1)
         f2 = self.decoder_embed(f2)
-
+        print("f1",f1.shape)
+        print("f2",f2.shape)
         final_output.append((f1, f2))
         for blk1, blk2 in zip(self.dec_blocks, self.dec_blocks2):
             # img1 side
@@ -138,11 +139,14 @@ class AsymmetricCroCo3DStereo (CroCoNet):
             # img2 side
             f2, _ = blk2(*final_output[-1][::-1], pos2, pos1)
             # store the result
+            print("f1",f1.shape)
+            print("f2",f2.shape)
             final_output.append((f1, f2))
 
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = tuple(map(self.dec_norm, final_output[-1]))
+        
         return zip(*final_output)
 
     def _downstream_head(self, head_num, decout, img_shape):
@@ -157,10 +161,11 @@ class AsymmetricCroCo3DStereo (CroCoNet):
 
         # combine all ref images into object-centric representation
         dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2)
-
+        print(len(dec1))
+        print(len(dec2))
         with torch.cuda.amp.autocast(enabled=False):
             res1 = self._downstream_head(1, [tok.float() for tok in dec1], shape1)
             res2 = self._downstream_head(2, [tok.float() for tok in dec2], shape2)
-
+        
         res2['pts3d_in_other_view'] = res2.pop('pts3d')  # predict view2's pts3d in view1's frame
         return res1, res2
