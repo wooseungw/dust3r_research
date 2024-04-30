@@ -1,3 +1,4 @@
+
 # Copyright (C) 2022-present Naver Corporation. All rights reserved.
 # Licensed under CC BY-NC-SA 4.0 (non-commercial use only).
 
@@ -143,10 +144,48 @@ class ResidualConvUnit_custom(nn.Module):
 
 class CrossAttentionBlock_custom(nn.Module):
     def __init__(self, *args, **kwargs) -> None:
-        
+        return None
     def forward(self, *xs):
-        return 
+        return None
 
+'''
+3. EfficientSelfAttention
+Transformer 아키텍처의 핵심인 자기 주의 메커니즘을 구현합니다.
+입력 이미지를 쿼리(q), 키(k), 값(v)으로 변환하고, 쿼리와 키의 유사도를 계산하여 어텐션 맵을 생성합니다.
+이 어텐션 맵을 사용하여 값(v)을 가중 평균하여 출력을 생성합니다.
+이 과정은 입력 특징의 중요한 부분을 강조하고 덜 중요한 부분을 억제합니다.
+'''
+class EfficientSelfAttention(nn.Module):
+    def __init__(
+        self,
+        *,
+        dim,
+        heads,
+        reduction_ratio
+    ):
+        super().__init__()
+        self.scale = (dim // heads) ** -0.5
+        self.heads = heads
+
+        self.to_q = nn.Conv2d(dim, dim, 1, bias = False)
+        self.to_kv = nn.Conv2d(dim, dim * 2, reduction_ratio, stride = reduction_ratio, bias = False)
+        self.to_out = nn.Conv2d(dim, dim, 1, bias = False)
+
+    def forward(self, x):
+        h, w = x.shape[-2:]
+        heads = self.heads
+
+        q, k, v = (self.to_q(x), *self.to_kv(x).chunk(2, dim = 1))
+        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> (b h) (x y) c', h = heads), (q, k, v))
+
+        sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+        attn = sim.softmax(dim = -1)
+
+        out = einsum('b i j, b j d -> b i d', attn, v)
+        out = rearrange(out, '(b h) (x y) c -> b (h c) x y', h = heads, x = h, y = w)
+        return self.to_out(out)
+
+### 
 class FeatureFusionBlock_custom(nn.Module):
     """Feature fusion block."""
 
@@ -200,7 +239,7 @@ class FeatureFusionBlock_custom(nn.Module):
         output = xs[0]
 
         if len(xs) == 2:
-            print(xs.shape)
+            
             res = self.resConfUnit1(xs[1])
             if self.width_ratio != 1:
                 res = F.interpolate(res, size=(output.shape[2], output.shape[3]), mode='bilinear')
@@ -211,7 +250,7 @@ class FeatureFusionBlock_custom(nn.Module):
         output = self.resConfUnit2(output)
 
         if self.width_ratio != 1:
-            print(xs.shape)
+            
             # and output.shape[3] < self.width_ratio * output.shape[2]
             #size=(image.shape[])
             if (output.shape[3] / output.shape[2]) < (2 / 3) * self.width_ratio:
@@ -269,6 +308,7 @@ class Interpolate(nn.Module):
 
         return x
 
+    
 class DPTOutputAdapter(nn.Module):
     """DPT 출력 어댑터.
 
@@ -434,25 +474,48 @@ class DPTOutputAdapter(nn.Module):
         
         # Hook decoder onto 4 layers from specified ViT layers
         layers = [encoder_tokens[hook] for hook in self.hooks]
-        
+        #print(len(layers)) # 4
+        print("layers0",layers[0].shape)
+        print("layers1",layers[1].shape)
+        print("layers2",layers[2].shape)
+        print("layers3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
         # Extract only task-relevant tokens and ignore global tokens.
         layers = [self.adapt_tokens(l) for l in layers]
-
+        print("adapt_tokens0",layers[0].shape)
+        print("adapt_tokens1",layers[1].shape)
+        print("adapt_tokens2",layers[2].shape)
+        print("adapt_tokens3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
         # Reshape tokens to spatial representation
         layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers]
-
+        print("reshape0",layers[0].shape)
+        print("reshape1",layers[1].shape)
+        print("reshape2",layers[2].shape)
+        print("reshape3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
+        print("act_postprocess0",layers[0].shape)   
+        print("act_postprocess1",layers[1].shape)
+        print("act_postprocess2",layers[2].shape)
+        print("act_postprocess3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
-        for i in layers:
-            print(i.shape)
+        print("rn0",layers[0].shape)
+        print("rn1",layers[1].shape)
+        print("rn2",layers[2].shape)
+        print("rn3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
+        
         # Fuse layers using refinement stages
+        print("layers3",layers[3].shape)
         path_4 = self.scratch.refinenet4(layers[3])
-        print("path4",path_4.shape)
+        print("path4",path_4.shape, "layer2",layers[2].shape)
         path_3 = self.scratch.refinenet3(path_4, layers[2])
-        print("path3",path_3.shape)
+        print("path3",path_3.shape, "layer1:",layers[1].shape)
         path_2 = self.scratch.refinenet2(path_3, layers[1])
-        print("path2",path_2.shape)
+        print("path2",path_2.shape, "layer0:",layers[0].shape) 
         path_1 = self.scratch.refinenet1(path_2, layers[0])
         print("path1",path_1.shape)
 
@@ -478,6 +541,7 @@ if __name__ == '__main__':
     }
     model = DPTOutputAdapter(**args)
     model.init()
+    #print(model.__repr__())
     # Create dummy input
     encoder_tokens = [(torch.ones(1,1024,768)+i) for i in range(13)]
     
@@ -487,5 +551,5 @@ if __name__ == '__main__':
     output = model(encoder_tokens, image_size)
 
     # Print the output
-    print(output.shape)
+    print("output",output.shape)
 

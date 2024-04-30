@@ -34,6 +34,7 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
 
     def forward(self, encoder_tokens: List[torch.Tensor], image_size=None):
         assert self.dim_tokens_enc is not None, 'init(dim_tokens_enc) 함수를 먼저 호출해야 합니다.'
+        print("+++++++++++++++++++DPThead+++++++++++++++++++")
         # H, W = input_info['image_size']
         image_size = self.image_size if image_size is None else image_size
         H, W = image_size
@@ -46,20 +47,44 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
 
         # 전역 토큰을 무시하고 작업에 필요한 토큰만 추출합니다.
         layers = [self.adapt_tokens(l) for l in layers]
-
+        print("adapt_tokens0",layers[0].shape)
+        print("adapt_tokens1",layers[1].shape)
+        print("adapt_tokens2",layers[2].shape)
+        print("adapt_tokens3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
+        
         # 토큰을 공간적인 표현으로 변환합니다.
         layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers]
-
+        print("reshape0",layers[0].shape)
+        print("reshape1",layers[1].shape)
+        print("reshape2",layers[2].shape)
+        print("reshape3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
+        
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # 선택한 특징 차원으로 레이어를 투영합니다.
+        print("act_postprocess0",layers[0].shape)   
+        print("act_postprocess1",layers[1].shape)
+        print("act_postprocess2",layers[2].shape)
+        print("act_postprocess3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
-
+        print("rn0",layers[0].shape)
+        print("rn1",layers[1].shape)
+        print("rn2",layers[2].shape)
+        print("rn3",layers[3].shape)
+        print("++++++++++++++++++++++++++++++++")
         # 개선 단계를 사용하여 레이어를 퓨즈합니다.
-        path_4 = self.scratch.refinenet4(layers[3])[:, :, :layers[2].shape[2], :layers[2].shape[3]]
+        # Fuse layers using refinement stages
+        print("layers3",layers[3].shape)
+        path_4 = self.scratch.refinenet4(layers[3])
+        print("path4",path_4.shape, "layer2",layers[2].shape)
         path_3 = self.scratch.refinenet3(path_4, layers[2])
+        print("path3",path_3.shape, "layer1:",layers[1].shape)
         path_2 = self.scratch.refinenet2(path_3, layers[1])
+        print("path2",path_2.shape, "layer0:",layers[0].shape) 
         path_1 = self.scratch.refinenet1(path_2, layers[0])
-
+        print("path1",path_1.shape)
         # 출력 헤드
         out = self.head(path_1)
 
@@ -124,14 +149,3 @@ def create_dpt_head(net, has_conf=False):
                                 conf_mode=net.conf_mode,
                                 head_type='regression')
 
-if __name__ == '__main__':
-    # dpthead의 매개변수 수 계산
-    dpthead = create_dpt_head(net)
-    num_params = sum(p.numel() for p in dpthead.parameters())
-    print(f"dpthead의 매개변수 수: {num_params}")
-
-    # 추론 시간을 위한 FLOPS 계산
-    input_size = (1, 3, 256, 256)  # 예시 입력 크기
-    flops = torch.cuda.FloatTensor(input_size).to(dpthead.device)
-    flops = dpthead.forward_flops(flops)
-    print(f"추론 시간을 위한 FLOPS: {flops}")

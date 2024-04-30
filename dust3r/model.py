@@ -121,32 +121,39 @@ class AsymmetricCroCo3DStereo (CroCoNet):
             pos1, pos2 = interleave(pos1, pos2)
         else:
             feat1, feat2, pos1, pos2 = self._encode_image_pairs(img1, img2, shape1, shape2)
-
+        print("++++++++++++++++++ENCODER++++++++++++++++++")
+        print("feat1",feat1.shape)
+        print("feat2",feat2.shape)
+        
         return (shape1, shape2), (feat1, feat2), (pos1, pos2)
 
     def _decoder(self, f1, pos1, f2, pos2):
         final_output = [(f1, f2)]  # before projection
-
+        print("++++++++++++++++++DECODER++++++++++++++++++")
+        print("0 _f1",f1.shape) #(B, S, D)
+        print("0 _f2",f2.shape) #(B, S, D)
         # project to decoder dim
         f1 = self.decoder_embed(f1)
         f2 = self.decoder_embed(f2)
-        print("f1",f1.shape)
-        print("f2",f2.shape)
+        print("decoder_embed f1",f1.shape)
+        print("decoder_embed f2",f2.shape)
         final_output.append((f1, f2))
+        asdf = 1
         for blk1, blk2 in zip(self.dec_blocks, self.dec_blocks2):
             # img1 side
             f1, _ = blk1(*final_output[-1][::+1], pos1, pos2)
             # img2 side
             f2, _ = blk2(*final_output[-1][::-1], pos2, pos1)
             # store the result
-            print("f1",f1.shape)
-            print("f2",f2.shape)
+            print(asdf,"_f1",f1.shape)
+            print(asdf,"_f2",f2.shape)
+            asdf +=1
             final_output.append((f1, f2))
-
+        print("final_output before",len(final_output))
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = tuple(map(self.dec_norm, final_output[-1]))
-        
+        print("final_output after",len(final_output))
         return zip(*final_output)
 
     def _downstream_head(self, head_num, decout, img_shape):
@@ -161,9 +168,8 @@ class AsymmetricCroCo3DStereo (CroCoNet):
 
         # combine all ref images into object-centric representation
         dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2)
-        print(len(dec1))
-        print(len(dec2))
-        with torch.cuda.amp.autocast(enabled=False):
+        
+        with torch.cuda.amp.autocast(enabled=False):    
             res1 = self._downstream_head(1, [tok.float() for tok in dec1], shape1)
             res2 = self._downstream_head(2, [tok.float() for tok in dec2], shape2)
         
