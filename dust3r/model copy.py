@@ -12,16 +12,15 @@ from .heads import head_factory
 from dust3r.patch_embed import get_patch_embed
 
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.croco import CroCoNet  # noqa
+from croco.models.croco import CroCoNet  # noqa
 inf = float('inf')
 
 
 class AsymmetricCroCo3DStereo (CroCoNet):
-    """ Two siamese encoders, followed by two decoders.
-    The goal is to output 3d points directly, both images in view1's frame
-    (hence the asymmetry).   
+    """ 두 개의 샴(쌍둥이) 인코더와 두 개의 디코더로 구성됩니다.
+    목표는 3D 포인트를 직접 출력하는 것이며, 두 이미지 모두 view1의 프레임에서 표시됩니다.
+    (따라서 비대칭성이 있습니다).   
     """
-
     def __init__(self,
                  output_mode='pts3d',
                  head_type='linear',
@@ -79,18 +78,19 @@ class AsymmetricCroCo3DStereo (CroCoNet):
         # magic wrapper
         self.head1 = transpose_to_landscape(self.downstream_head1, activate=landscape_only)
         self.head2 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
-
+    
+    #이미지 인코딩 부분
     def _encode_image(self, image, true_shape):
-        # embed the image into patches  (x has size B x Npatches x C)
+        # 이미지를 패치로 임베딩합니다 (x의 크기는 B x Npatches x C입니다).
         x, pos = self.patch_embed(image, true_shape=true_shape)
 
-        # add positional embedding without cls token
+        # cls 토큰 없이 위치 임베딩을 추가합니다.
         assert self.enc_pos_embed is None
 
-        # now apply the transformer encoder and normalization
+        # 이제 transformer 인코더와 정규화를 적용합니다.
         for blk in self.enc_blocks:
             x = blk(x, pos)
-
+            print("encoder_x",x.shape)
         x = self.enc_norm(x)
         return x, pos, None
 
@@ -106,7 +106,7 @@ class AsymmetricCroCo3DStereo (CroCoNet):
         return out, out2, pos, pos2
 
     def _encode_symmetrized(self, view1, view2):
-        img1 = view1['img']
+        img1 = view1['img'] 
         img2 = view2['img']
         B = img1.shape[0]
         # Recover true_shape when available, otherwise assume that the img shape is the true one
@@ -121,28 +121,38 @@ class AsymmetricCroCo3DStereo (CroCoNet):
             pos1, pos2 = interleave(pos1, pos2)
         else:
             feat1, feat2, pos1, pos2 = self._encode_image_pairs(img1, img2, shape1, shape2)
-
+        print("++++++++++++++++++ENCODER++++++++++++++++++")
+        print("feat1",feat1.shape)
+        print("feat2",feat2.shape)
+        
         return (shape1, shape2), (feat1, feat2), (pos1, pos2)
 
     def _decoder(self, f1, pos1, f2, pos2):
         final_output = [(f1, f2)]  # before projection
-
+        print("++++++++++++++++++DECODER++++++++++++++++++")
+        print("0 _f1",f1.shape) #(B, S, D)
+        print("0 _f2",f2.shape) #(B, S, D)
         # project to decoder dim
         f1 = self.decoder_embed(f1)
         f2 = self.decoder_embed(f2)
-
+        print("decoder_embed f1",f1.shape)
+        print("decoder_embed f2",f2.shape)
         final_output.append((f1, f2))
+        asdf = 1
         for blk1, blk2 in zip(self.dec_blocks, self.dec_blocks2):
             # img1 side
             f1, _ = blk1(*final_output[-1][::+1], pos1, pos2)
             # img2 side
             f2, _ = blk2(*final_output[-1][::-1], pos2, pos1)
             # store the result
+            print(f"{asdf}_f1",f1.shape,f"{asdf}_f2",f2.shape)
+            asdf +=1
             final_output.append((f1, f2))
-
+        print("final_output before",len(final_output))
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = tuple(map(self.dec_norm, final_output[-1]))
+        print("final_output after",len(final_output))
         return zip(*final_output)
 
     def _downstream_head(self, head_num, decout, img_shape):
@@ -157,10 +167,10 @@ class AsymmetricCroCo3DStereo (CroCoNet):
 
         # combine all ref images into object-centric representation
         dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2)
-
-        with torch.cuda.amp.autocast(enabled=False):
+        
+        with torch.cuda.amp.autocast(enabled=False):    
             res1 = self._downstream_head(1, [tok.float() for tok in dec1], shape1)
             res2 = self._downstream_head(2, [tok.float() for tok in dec2], shape2)
-
+        
         res2['pts3d_in_other_view'] = res2.pop('pts3d')  # predict view2's pts3d in view1's frame
         return res1, res2
