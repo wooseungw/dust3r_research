@@ -14,10 +14,11 @@ import torch
 import torch.nn as nn
 from dust3r.heads.postprocess import postprocess
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.dpt_block import DPTOutputAdapter  # noqa
+from dust3r.dpt_custom import DPT_DSCA_Adapter  # noqa
 
 
-class DPTOutputAdapter_fix(DPTOutputAdapter):
+
+class DPTOutputAdapter_fix(DPT_DSCA_Adapter):
 
     """
     dust3r를 위해 croco의 DPTOutputAdapter 구현을 수정:
@@ -34,7 +35,7 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
 
     def forward(self, encoder_tokens: List[torch.Tensor], image_size=None):
         assert self.dim_tokens_enc is not None, 'init(dim_tokens_enc) 함수를 먼저 호출해야 합니다.'
-        # print("+++++++++++++++++++DPThead+++++++++++++++++++")
+        #print("+++++++++++++++++++DPThead+++++++++++++++++++")
         # H, W = input_info['image_size']
         image_size = self.image_size if image_size is None else image_size
         H, W = image_size
@@ -51,7 +52,7 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
         # print("++++++++++++++++++++++++++++++++")
         # 전역 토큰을 무시하고 작업에 필요한 토큰만 추출합니다.
         # layers = [self.adapt_tokens(l) for l in layers]
-        #print("adapt_tokens0",layers[0].shape)
+        # print("adapt_tokens0",layers[0].shape)
         # print("adapt_tokens1",layers[1].shape)
         # print("adapt_tokens2",layers[2].shape)
         # print("adapt_tokens3",layers[3].shape)
@@ -65,7 +66,33 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
         # print("reshape3",layers[3].shape)
         # print("++++++++++++++++++++++++++++++++")
         
-        layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
+        ks = [self.ks[idx](l) for idx, l in enumerate(layers)]
+        # print("ks0",ks[0].shape)
+        # print("ks1",ks[1].shape)
+        # print("ks2",ks[2].shape)
+        # print("ks3",ks[3].shape)
+        vs = [self.vs[idx](l) for idx, l in enumerate(layers)]
+        # print("vs0",vs[0].shape)
+        # print("vs1",vs[1].shape)
+        # print("vs2",vs[2].shape)
+        # print("vs3",vs[3].shape)
+        layers = [self.qs[idx](l) for idx, l in enumerate(layers)] #equal as Query
+        # print("qs0",layers[0].shape)
+        # print("qs1",layers[1].shape)
+        # print("qs2",layers[2].shape)
+        # print("qs3",layers[3].shape)
+        
+        for idx,(q,k,v) in enumerate(zip(layers,ks,vs)):
+            shape = q.shape
+            q = q.flatten(2)
+            k = k.flatten(2)
+            v = v.flatten(2)
+            # print("q",q.shape)
+            # print("k",k.shape)
+            # print("v",v.shape)
+            attn = torch.matmul(torch.matmul(q.transpose(-1, -2), k).softmax(dim=-1), v.transpose(-1,-2)).transpose(-1,-2).reshape(shape)
+            layers[idx] = self.act_postprocess[idx](attn)
+        # layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # 선택한 특징 차원으로 레이어를 투영합니다.
         # print("act_postprocess0",layers[0].shape)   
         # print("act_postprocess1",layers[1].shape)
@@ -83,12 +110,16 @@ class DPTOutputAdapter_fix(DPTOutputAdapter):
         #print("layers3",layers[3].shape)
         path_4 = self.scratch.refinenet4(layers[3])[:, :, :layers[2].shape[2], :layers[2].shape[3]]
         #print("path4",path_4.shape, "layer2",layers[2].shape)
+        
         path_3 = self.scratch.refinenet3(path_4, layers[2])
         #print("path3",path_3.shape, "layer1:",layers[1].shape)
+        
         path_2 = self.scratch.refinenet2(path_3, layers[1])
         #print("path2",path_2.shape, "layer0:",layers[0].shape) 
+        
         path_1 = self.scratch.refinenet1(path_2, layers[0])
         #print("path1",path_1.shape)
+        
         # 출력 헤드
         out = self.head(path_1)
 
@@ -124,7 +155,7 @@ class PixelwiseTaskWithDPT(nn.Module):
         return out
 
 
-def create_dpt_head(net, has_conf=False):
+def create_DSCA_head(net, has_conf=False):
     """
     주어진 net 매개변수에 대한 PixelwiseTaskWithDPT를 반환합니다.
 
