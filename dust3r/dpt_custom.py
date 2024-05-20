@@ -272,7 +272,164 @@ class DsConv2d(nn.Module):
         return self.net(x)
 
 
-class DPTOutputAdapter(nn.Module):
+
+class DPT_DS_Adapter(nn.Module):
+    def __init__(self,
+                 num_channels: int = 1,
+                 stride_level: int = 1,
+                 patch_size: Union[int, Tuple[int, int]] = 16,
+                 main_tasks: Iterable[str] = ('rgb',),
+                 hooks: List[int] = [2, 5, 8, 11],
+                 layer_dims: List[int] = [96, 192, 384, 768],
+                 feature_dim: int = 256,
+                 last_dim: int = 32,
+                 use_bn: bool = False,
+                 dim_tokens_enc: Optional[int] = None,
+                 head_type: str = 'regression',
+                 output_width_ratio=1,
+                 **kwargs):
+        super().__init__()
+        self.num_channels = num_channels
+        self.stride_level = stride_level
+        self.patch_size = pair(patch_size)
+        self.main_tasks = main_tasks
+        self.hooks = hooks
+        self.layer_dims = layer_dims
+        self.feature_dim = feature_dim
+        self.dim_tokens_enc = dim_tokens_enc * len(self.main_tasks) if dim_tokens_enc is not None else None
+        self.head_type = head_type
+
+        # Actual patch height and width, taking into account stride of input
+        self.P_H = max(1, self.patch_size[0] // stride_level)
+        self.P_W = max(1, self.patch_size[1] // stride_level)
+
+        self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
+
+        self.scratch.refinenet1 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+        self.scratch.refinenet2 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+        self.scratch.refinenet3 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+        self.scratch.refinenet4 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+
+        if self.head_type == 'regression':
+            # The "DPTDepthModel" head
+            self.head = nn.Sequential(
+                nn.Conv2d(feature_dim, feature_dim // 2, kernel_size=3, stride=1, padding=1),
+                Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                nn.Conv2d(feature_dim // 2, last_dim, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(True),
+                nn.Conv2d(last_dim, self.num_channels, kernel_size=1, stride=1, padding=0)
+            )
+        elif self.head_type == 'semseg':
+            # The "DPTSegmentationModel" head
+            self.head = nn.Sequential(
+                nn.Conv2d(feature_dim, feature_dim, kernel_size=3, padding=1, bias=False),
+                nn.BatchNorm2d(feature_dim) if use_bn else nn.Identity(),
+                nn.ReLU(True),
+                nn.Dropout(0.1, False),
+                nn.Conv2d(feature_dim, self.num_channels, kernel_size=1),
+                Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            )
+        else:
+            raise ValueError('DPT head_type must be "regression" or "semseg".')
+
+        if self.dim_tokens_enc is not None:
+            self.init(dim_tokens_enc=dim_tokens_enc)
+
+    def init(self, dim_tokens_enc=768):
+        """
+        Initialize parts of decoder that are dependent on dimension of encoder tokens.
+        Should be called when setting up MultiMAE.
+
+        :param dim_tokens_enc: Dimension of tokens coming from encoder
+        """
+        #print(dim_tokens_enc)
+
+        # Set up activation postprocessing layers
+        if isinstance(dim_tokens_enc, int):
+            dim_tokens_enc = 4 * [dim_tokens_enc]
+
+        self.dim_tokens_enc = [dt * len(self.main_tasks) for dt in dim_tokens_enc]
+        
+        self.act_1_postprocess = nn.Sequential(
+            DsConv2d(dim_in=self.dim_tokens_enc[0], dim_out=self.layer_dims[0], kernel_size=3, stride=1, padding=1),
+            nn.ConvTranspose2d(
+                in_channels=self.layer_dims[0],
+                out_channels=self.layer_dims[0],
+                kernel_size=4, stride=4, padding=0,
+                bias=True, dilation=1, groups=1,
+            )
+        )
+
+        self.act_2_postprocess = nn.Sequential(
+            DsConv2d(dim_in=self.dim_tokens_enc[1], dim_out=self.layer_dims[1], kernel_size=3, stride=1, padding=1),
+            nn.ConvTranspose2d(
+                in_channels=self.layer_dims[1],
+                out_channels=self.layer_dims[1],
+                kernel_size=2, stride=2, padding=0,
+                bias=True, dilation=1, groups=1,
+            )
+        )
+
+        self.act_3_postprocess = nn.Sequential(
+            DsConv2d(dim_in=self.dim_tokens_enc[2], dim_out=self.layer_dims[2], kernel_size=3, stride=1, padding=1),
+        )
+
+        self.act_4_postprocess = nn.Sequential(
+            DsConv2d(dim_in=self.dim_tokens_enc[3], dim_out=self.layer_dims[3], kernel_size=3, stride=1, padding=1),
+            DsConv2d(dim_in=self.layer_dims[3], dim_out=self.layer_dims[3], kernel_size=3, stride=2, padding=1),
+        )
+        
+        self.act_postprocess = nn.ModuleList([
+            self.act_1_postprocess,
+            self.act_2_postprocess,
+            self.act_3_postprocess,
+            self.act_4_postprocess
+        ])
+        
+            
+
+    def adapt_tokens(self, encoder_tokens):
+        # Adapt tokens
+        x = []
+        x.append(encoder_tokens[:, :])
+        x = torch.cat(x, dim=-1)
+        return x
+
+    def forward(self, encoder_tokens: List[torch.Tensor], image_size):
+            #input_info: Dict):
+        assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
+        H, W = image_size
+        
+        # Number of patches in height and width
+        N_H = H // (self.stride_level * self.P_H)
+        N_W = W // (self.stride_level * self.P_W)
+        
+        # Hook decoder onto 4 layers from specified ViT layers
+        layers = [encoder_tokens[hook] for hook in self.hooks]
+        
+        # Extract only task-relevant tokens and ignore global tokens.
+        layers = [self.adapt_tokens(l) for l in layers]
+
+        # Reshape tokens to spatial representation
+        layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers]
+
+        layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
+        
+        # Project layers to chosen feature dim
+        layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
+
+        # Fuse layers using refinement stages
+        path_4 = self.scratch.refinenet4(layers[3])[:, :, :layers[2].shape[2], :layers[2].shape[3]]
+        path_3 = self.scratch.refinenet3(path_4, layers[2])
+        path_2 = self.scratch.refinenet2(path_3, layers[1])
+        path_1 = self.scratch.refinenet1(path_2, layers[0])
+
+        # Output head
+        out = self.head(path_1)
+
+        return out
+
+class DPT_DSCA_Adapter(nn.Module):
     """DPT 출력 어댑터.
 
     :param num_channels: 출력 채널의 개수
@@ -396,20 +553,10 @@ class DPTOutputAdapter(nn.Module):
             )
         )
 
-        self.act_3_postprocess = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.layer_dims[2],
-                out_channels=self.layer_dims[2],
-                kernel_size=1, stride=1, padding=0,
-            )
-        )
+        self.act_3_postprocess = nn.Identity()
 
         self.act_4_postprocess = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.layer_dims[3],
-                out_channels=self.layer_dims[3],
-                kernel_size=3, stride=2, padding=1,
-            )
+            DsConv2d(dim_in=self.layer_dims[3], dim_out=self.layer_dims[3], kernel_size=3, stride=2, padding=1),
         )
         self.qs = nn.ModuleList([
             self.q1,
